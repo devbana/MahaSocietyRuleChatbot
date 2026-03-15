@@ -1,115 +1,151 @@
 # Housing Society Law Assistant
 
-Gradio application for querying uploaded housing society law PDFs using retrieval-augmented generation with Hugging Face models for both embeddings and answer generation.
+This project is a small RAG application for Maharashtra housing society documents. It lets you upload PDF rule books, index them, and ask plain-English questions through a Gradio chat interface.
 
-## Features
+The goal is simple: instead of manually scanning long society law PDFs, you can ask a question like "Can a tenant use the society parking space?" and get an answer grounded in the indexed documents, along with citations and source files.
 
-- Upload PDF documents from the Gradio sidebar
-- Index documents into a local Chroma vector database or Astra DB
-- Ask legal questions in a chat interface
-- Retrieve the top 5 relevant chunks for each query
-- Use Hugging Face embeddings for semantic search
-- Use a Hugging Face LLM for final answer generation
-- Display the generated answer, cited legal sections, and source documents
+## What It Does
+
+- Uploads housing society law PDFs through the UI
+- Extracts and chunks PDF text for retrieval
+- Stores embeddings in either local Chroma or Astra DB
+- Answers questions with Gemini using retrieved document context
+- Shows cited sections and source documents beside the chat
+
+## How The App Works
+
+1. PDF files are loaded from `data/` and `data/uploads/`.
+2. The text is split into chunks.
+3. Those chunks are embedded with `sentence-transformers/all-MiniLM-L6-v2`.
+4. Embeddings are stored in Chroma or Astra DB, depending on config.
+5. When a user asks a question, the app retrieves the most relevant chunks.
+6. Gemini generates the answer using only that retrieved context.
+
+## Tech Stack
+
+- UI: Gradio
+- LLM: Google Gemini
+- Embeddings: Hugging Face sentence transformers
+- Vector store: Chroma or Astra DB
+- PDF parsing: PyMuPDF / PyPDF via LangChain loaders
+
+## Project Layout
+
+- `app.py` - Gradio app entrypoint
+- `main.py` - CLI/debug workflow for indexing and querying
+- `data/` - bundled PDF documents
+- `data/uploads/` - PDFs uploaded from the UI
+- `vector_db/` - local Chroma persistence
+- `src/housing_society_law_assistant/config.py` - environment-driven settings
+- `src/housing_society_law_assistant/pdf_processing.py` - PDF loading and chunking
+- `src/housing_society_law_assistant/vector_store.py` - Chroma/Astra integration
+- `src/housing_society_law_assistant/qa_service.py` - retrieval and answer generation
+- `src/housing_society_law_assistant/document_store.py` - upload and directory helpers
 
 ## Setup
 
-1. Create and activate a virtual environment.
-2. Install dependencies:
+### 1. Create a virtual environment
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
+### 2. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Create a `.env` file from the example and set your Hugging Face token:
+### 3. Create your environment file
 
 ```bash
 cp .env.example .env
 ```
 
-Then edit `.env` and set:
+Then fill in the values in `.env`.
 
-```bash
-HUGGINGFACEHUB_API_TOKEN=your_token_here
-```
+Minimum config for local Chroma:
 
-For local development, the default vector backend is Chroma:
-
-```bash
+```env
+GEMINI_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-2.0-flash
 VECTOR_STORE_BACKEND=chroma
+EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+CHUNK_SIZE=1200
+CHUNK_OVERLAP=200
+TOP_K=5
 ```
 
-To use Astra DB instead, set:
+If you want Astra DB instead of local storage:
 
-```bash
+```env
 VECTOR_STORE_BACKEND=astra
-ASTRA_DB_API_ENDPOINT=https://<db-id>-<region>.apps.astra.datastax.com
+ASTRA_DB_API_ENDPOINT=https://<your-db-endpoint>
 ASTRA_DB_APPLICATION_TOKEN=AstraCS:...
-ASTRA_DB_NAMESPACE=default_keyspace
-ASTRA_DB_ENVIRONMENT=prod
+ASTRA_DB_NAMESPACE=
+ASTRA_DB_ENVIRONMENT=
 ```
 
-4. Run the app:
+## Run The App
 
 ```bash
 python app.py
 ```
 
-## Project Structure
+This starts the Gradio interface locally. From there you can:
 
-- `app.py`: Gradio entrypoint
-- `src/housing_society_law_assistant/config.py`: application settings
-- `src/housing_society_law_assistant/document_store.py`: upload persistence
-- `src/housing_society_law_assistant/pdf_processing.py`: PDF loading and chunking
-- `src/housing_society_law_assistant/vector_store.py`: Chroma/Astra indexing and retrieval
-- `src/housing_society_law_assistant/qa_service.py`: answer generation and citation shaping
+- upload PDFs
+- save them into `data/uploads/`
+- index all available documents
+- ask questions in chat
 
-## Function Summary
+## CLI Mode
 
-- `ensure_directories()`: creates the data and upload directories used by the app.
-- `save_uploaded_files()`: copies uploaded PDFs into the local upload folder.
-- `list_available_pdf_paths()` / `list_available_pdfs()`: discover bundled and uploaded PDFs for indexing and display.
-- `load_pdf_documents()`: reads each PDF and converts pages into LangChain `Document` objects.
-- `chunk_documents()`: splits loaded pages into smaller chunks for retrieval.
-- `get_embeddings()`: creates the Hugging Face embedding model client.
-- `get_vector_store()`: opens the configured Chroma or Astra vector collection.
-- `vector_store_has_data()`: checks whether indexing has already been done.
-- `build_vector_store()`: rebuilds the full Chroma index from all available PDFs.
-- `retrieve_sections()`: runs semantic similarity search for the user query.
-- `format_context()`: converts retrieved chunks into prompt context.
-- `build_citations()`: creates citation metadata for the UI.
-- `unique_sources()`: extracts distinct source document names.
-- `get_llm()`: creates the Hugging Face LLM client.
-- `answer_question()`: performs retrieval-augmented generation and returns answer, citations, and sources.
-- `upload_documents()`: Gradio handler for saving files from the sidebar.
-- `index_documents()`: Gradio handler for building the vector database.
-- `ask_question()`: Gradio chat handler for answering user queries.
-- `create_app()`: builds the Gradio interface and wires button actions.
+There is also a simple CLI flow in `main.py`.
 
-## Execution Hierarchy
+List available PDFs:
 
-1. `create_app()` initializes the UI and ensures the data directories exist.
-2. `upload_documents()` stores new PDFs in `data/uploads`.
-3. `index_documents()` triggers `build_vector_store()`.
-4. `build_vector_store()` calls `load_pdf_documents()` and then `chunk_documents()`.
-5. `get_embeddings()` and `get_vector_store()` prepare Chroma with Hugging Face embeddings.
-6. Chunks are stored either in the local Chroma database under `data/vector_db` or in the configured Astra DB collection.
-7. `ask_question()` validates the request and calls `answer_question()`.
-8. `answer_question()` calls `retrieve_sections()` to fetch the most relevant chunks.
-9. `format_context()` prepares the retrieved chunks for the prompt.
-10. `get_llm()` creates the Hugging Face LLM client and generates the final answer.
-11. `build_citations()` and `unique_sources()` prepare supporting evidence for the UI.
-12. Gradio displays the answer, cited sections, and source list back to the user.
+```bash
+python main.py list
+```
 
-## Model Configuration
+Index documents:
 
-- Embedding model default: `sentence-transformers/all-MiniLM-L6-v2`
-- LLM default: `HuggingFaceH4/zephyr-7b-beta`
+```bash
+python main.py index
+```
 
-You can change both defaults in `src/housing_society_law_assistant/config.py`.
+Ask a question:
 
-## Astra DB Notes
+```bash
+python main.py ask --query "What are the rules for parking allocation?"
+```
 
-- This project uses LangChain's `AstraDBVectorStore` integration when `VECTOR_STORE_BACKEND=astra`.
-- Re-indexing with Astra DB recreates the configured collection before loading fresh chunks.
-- You still need the Hugging Face token for answer generation, even when Astra DB is used for vector storage.
+Force a full Astra rebuild:
+
+```bash
+python main.py index --reindex
+```
+
+## Notes
+
+- `VECTOR_STORE_BACKEND=astra` is the default in the current config.
+- If you prefer fully local development, switch it to `chroma`.
+- Re-indexing rebuilds the vector store from all PDFs currently available.
+- Uploaded files are not enough by themselves; you still need to click `Index Documents`.
+- Answers are only as good as the indexed PDF content. If the source material is incomplete, the answer will be incomplete too.
+
+## Security
+
+- Keep `.env` out of version control.
+- Rotate API keys immediately if they were ever committed.
+- Use `.env.example` only for placeholders, never real secrets.
+
+## Future Improvements
+
+- Better citation formatting for long answers
+- Source-aware answer confidence
+- OCR support for scanned PDFs
+- Conversation memory with stricter legal grounding
+- Deployment-ready config for hosted usage
